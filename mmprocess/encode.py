@@ -298,17 +298,20 @@ def create_encode_job(
     subtitle_path = None
     subtitle_stream_index = None
 
-    if external_subtitle and external_subtitle.exists():
-        subtitle_path = str(external_subtitle)
-        subtitle_stream_index = None  # External .srt doesn't need stream index
-        logger.info(f"Using external subtitle: {external_subtitle.name}")
+    if profile.processing.subtitles:
+        if external_subtitle and external_subtitle.exists():
+            subtitle_path = str(external_subtitle)
+            subtitle_stream_index = None  # External .srt doesn't need stream index
+            logger.info(f"Using external subtitle: {external_subtitle.name}")
+        else:
+            # Check for embedded forced subtitle track
+            forced_sub = info.get_forced_subtitle()
+            if forced_sub:
+                subtitle_path = str(input_path)
+                subtitle_stream_index = forced_sub.index
+                logger.info(f"Found forced subtitle track {forced_sub.index} ({forced_sub.codec})")
     else:
-        # Check for embedded forced subtitle track
-        forced_sub = info.get_forced_subtitle()
-        if forced_sub:
-            subtitle_path = str(input_path)
-            subtitle_stream_index = forced_sub.index
-            logger.info(f"Found forced subtitle track {forced_sub.index} ({forced_sub.codec})")
+        logger.info("Subtitle burn-in disabled by profile")
 
     # Build video filters (including subtitle burn-in if subs found)
     video_filters = build_video_filters(

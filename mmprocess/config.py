@@ -87,6 +87,7 @@ class ProcessingProfile:
     scale: bool = True
     denoise: bool = False
     deinterlace: bool = False
+    subtitles: bool = True  # Burn in forced/external subtitles
 
 
 @dataclass
@@ -119,6 +120,21 @@ class SmartProfile:
 
 
 @dataclass
+class ResolutionTier:
+    """Resolution-based encoding settings.
+
+    Allows different codecs and size limits based on input resolution.
+    Tiers are matched by finding the smallest tier where input_pixels <= max_pixels.
+    """
+    name: str = ""  # Tier name (e.g., "sd", "hd", "uhd")
+    max_pixels: int = 0  # Maximum input pixels for this tier (width * height)
+    codec: str | None = None  # Video codec override (e.g., "libx264", "libx265")
+    max_size_mb: int | None = None  # Max output size override in MB
+    max_width: int | None = None  # Max output width override
+    max_height: int | None = None  # Max output height override
+
+
+@dataclass
 class Profile:
     """Complete encoding profile."""
     name: str = "default"
@@ -128,6 +144,7 @@ class Profile:
     processing: ProcessingProfile = field(default_factory=ProcessingProfile)
     limits: LimitsProfile = field(default_factory=LimitsProfile)
     smart: SmartProfile = field(default_factory=SmartProfile)
+    tiers: list[ResolutionTier] = field(default_factory=list)  # Resolution-based overrides
 
 
 def get_config_path() -> Path:
@@ -231,6 +248,8 @@ def _load_profile_cfg(profile_path: Path, profile: Profile) -> None:
             profile.processing.crop = _parse_bool(cfg.get("steps", "crop"))
         if cfg.has_option("steps", "scale"):
             profile.processing.scale = _parse_bool(cfg.get("steps", "scale"))
+        if cfg.has_option("steps", "subtitles"):
+            profile.processing.subtitles = _parse_bool(cfg.get("steps", "subtitles"))
 
     # [limits] section
     if cfg.has_section("limits"):
@@ -284,6 +303,28 @@ def _load_profile_cfg(profile_path: Path, profile: Profile) -> None:
     if cfg.has_section("settings"):
         if cfg.has_option("settings", "cangrow"):
             profile.smart.can_grow = _parse_bool(cfg.get("settings", "cangrow"))
+
+    # [tier.xxx] sections - resolution-based overrides
+    for section in cfg.sections():
+        if section.startswith("tier."):
+            tier_name = section[5:]  # Remove "tier." prefix
+            tier = ResolutionTier(name=tier_name)
+
+            if cfg.has_option(section, "max_pixels"):
+                tier.max_pixels = cfg.getint(section, "max_pixels")
+            if cfg.has_option(section, "codec"):
+                tier.codec = cfg.get(section, "codec")
+            if cfg.has_option(section, "max_size_mb"):
+                tier.max_size_mb = cfg.getint(section, "max_size_mb")
+            if cfg.has_option(section, "max_width"):
+                tier.max_width = cfg.getint(section, "max_width")
+            if cfg.has_option(section, "max_height"):
+                tier.max_height = cfg.getint(section, "max_height")
+
+            profile.tiers.append(tier)
+
+    # Sort tiers by max_pixels ascending (smallest first)
+    profile.tiers.sort(key=lambda t: t.max_pixels)
 
 
 def profile_exists(config: Config, name: str) -> bool:
@@ -354,6 +395,8 @@ def load_profile(config: Config, name: str) -> Profile:
                 profile.processing.denoise = proc_data["denoise"]
             if "deinterlace" in proc_data:
                 profile.processing.deinterlace = proc_data["deinterlace"]
+            if "subtitles" in proc_data:
+                profile.processing.subtitles = proc_data["subtitles"]
 
         # Load limits section
         if "limits" in data:
@@ -397,4 +440,69 @@ def load_profile(config: Config, name: str) -> Profile:
             if "deflate" in smart_data:
                 profile.smart.deflate = smart_data["deflate"]
 
+        # Load tiers section (TOML array of tables)
+        if "tiers" in data:
+            for tier_data in data["tiers"]:
+                tier = ResolutionTier()
+                if "name" in tier_data:
+                    tier.name = tier_data["name"]
+                if "max_pixels" in tier_data:
+                    tier.max_pixels = tier_data["max_pixels"]
+                if "codec" in tier_data:
+                    tier.codec = tier_data["codec"]
+                if "max_size_mb" in tier_data:
+                    tier.max_size_mb = tier_data["max_size_mb"]
+                if "max_width" in tier_data:
+                    tier.max_width = tier_data["max_width"]
+                if "max_height" in tier_data:
+                    tier.max_height = tier_data["max_height"]
+                profile.tiers.append(tier)
+
+            # Sort tiers by max_pixels ascending (smallest first)
+            profile.tiers.sort(key=lambda t: t.max_pixels)
+
     return profile
+
+
+def select_tier(profile: Profile, input_pixels: int) -> ResolutionTier | None:
+    """
+    Select the appropriate resolution tier for the given input resolution.
+
+    Finds the smallest tier where input_pixels <= max_pixels.
+
+    Args:
+        profile: Encoding profile with tiers
+        input_pixels: Input resolution in pixels (width * height)
+
+    Returns:
+        Matching ResolutionTier, or None if no tiers defined or no match
+    """
+    if not profile.tiers:
+        return None
+
+    for tier in profile.tiers:
+        if input_pixels <= tier.max_pixels:
+            return tier
+
+    # Input exceeds all tiers - return the largest tier
+    return profile.tiers[-1] if profile.tiers else None
+
+
+def apply_tier(profile: Profile, tier: ResolutionTier) -> None:
+    """
+    Apply tier overrides to profile settings.
+
+    Modifies the profile in-place with tier-specific settings.
+
+    Args:
+        profile: Encoding profile to modify
+        tier: Resolution tier with override values
+    """
+    if tier.codec is not None:
+        profile.video.codec = tier.codec
+    if tier.max_size_mb is not None:
+        profile.limits.max_size_mb = tier.max_size_mb
+    if tier.max_width is not None:
+        profile.limits.max_width = tier.max_width
+    if tier.max_height is not None:
+        profile.limits.max_height = tier.max_height

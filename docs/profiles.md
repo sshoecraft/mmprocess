@@ -96,6 +96,7 @@ Processing steps to enable.
 | `scale` | Enable resolution scaling | `true` |
 | `denoise` | Enable denoise filter | `false` |
 | `deinterlace` | Enable deinterlace filter | `false` |
+| `subtitles` | Burn in forced/external subtitles | `true` |
 
 ### [limits]
 
@@ -118,6 +119,71 @@ Smart sizing configuration.
 | `enabled` | Enable smart sizing | `false` |
 | `size` | Adjust file size | `true` |
 | `scale` | Adjust resolution | `true` |
+
+### [tier.NAME] (Legacy .cfg) / [[tiers]] (TOML)
+
+Resolution-based encoding overrides. Allows different codecs and size limits based on input resolution. Useful for using HEVC for 4K sources while keeping H.264 for 1080p compatibility.
+
+Tiers are matched by finding the smallest tier where `input_pixels <= max_pixels`.
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `name` | Tier name (for logging) | `""` |
+| `max_pixels` | Maximum input pixels (width × height) | Required |
+| `codec` | Video codec override | None |
+| `max_size_mb` | Max output size override in MB | None |
+| `max_width` | Max output width override | None |
+| `max_height` | Max output height override | None |
+
+#### Legacy .cfg Format
+
+```ini
+[tier.sd]
+max_pixels=921600
+codec=libx264
+max_size_mb=2048
+
+[tier.hd]
+max_pixels=2073600
+codec=libx264
+max_size_mb=4096
+
+[tier.uhd]
+max_pixels=8294400
+codec=libx265
+max_size_mb=6144
+```
+
+#### TOML Format
+
+```toml
+[[tiers]]
+name = "sd"
+max_pixels = 921600
+codec = "libx264"
+max_size_mb = 2048
+
+[[tiers]]
+name = "hd"
+max_pixels = 2073600
+codec = "libx264"
+max_size_mb = 4096
+
+[[tiers]]
+name = "uhd"
+max_pixels = 8294400
+codec = "libx265"
+max_size_mb = 6144
+```
+
+#### Common Resolution Pixel Values
+
+| Resolution | Pixels | Notes |
+|------------|--------|-------|
+| 720p | 921,600 | 1280×720 |
+| 1080p | 2,073,600 | 1920×1080 |
+| 1440p | 3,686,400 | 2560×1440 |
+| 4K | 8,294,400 | 3840×2160 |
 
 ## Common Profile Examples
 

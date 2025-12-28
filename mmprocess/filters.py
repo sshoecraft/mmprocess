@@ -162,7 +162,7 @@ def build_video_filters(
         chain.add(denoise_filter(denoise_method))
 
     # 5. Subtitles last (after final resolution is set)
-    if subtitle_path and subtitle_stream_index is not None:
+    if subtitle_path:
         chain.add(subtitle_filter(subtitle_path, subtitle_stream_index))
 
     return chain

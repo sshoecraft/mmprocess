@@ -11,7 +11,7 @@ import struct
 from pathlib import Path
 
 from mmprocess.calculate import calculate_from_profile
-from mmprocess.config import Config, Profile, load_profile, profile_exists
+from mmprocess.config import Config, Profile, load_profile, profile_exists, select_tier, apply_tier
 from mmprocess.encode import create_encode_job, run_encode
 from mmprocess.log import logger
 from mmprocess.mux import mux
@@ -154,6 +154,14 @@ def process_file(
     else:
         # Load info from state
         info = probe(input_path, config.tools.ffprobe)
+
+    # Apply resolution tier overrides (if configured)
+    if info.primary_video and profile.tiers:
+        input_pixels = info.primary_video.width * info.primary_video.height
+        tier = select_tier(profile, input_pixels)
+        if tier:
+            logger.info(f"Resolution tier: {tier.name} ({input_pixels:,} pixels)")
+            apply_tier(profile, tier)
 
     # Step 2: Crop detection
     crop = None
