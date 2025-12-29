@@ -85,6 +85,10 @@ def build_ffmpeg_command(
         # Force 8-bit output for compatibility (QuickTime doesn't support 10-bit H.264)
         cmd.extend(["-pix_fmt", "yuv420p"])
 
+        # Use hvc1 tag for HEVC (required for QuickTime/Apple compatibility)
+        if job.video_codec == "libx265":
+            cmd.extend(["-tag:v", "hvc1"])
+
         # Video filters
         if job.video_filters:
             vf = job.video_filters.build()
